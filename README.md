@@ -11,7 +11,33 @@ The application allows a medical representative to record interactions with Heal
 ```
 hcp-crm/
 ├── backend/
+│   ├── requirements.txt
+│   ├── .env.example
+│   └── app/
+│       ├── main.py              # FastAPI app entrypoint, CORS, router setup
+│       ├── config.py            # Loads settings from .env
+│       ├── database.py          # SQLAlchemy engine/session (MySQL)
+│       ├── models.py            # HCP, Interaction, Material, Sample tables
+│       ├── schemas.py           # Pydantic request/response models
+│       ├── agent/
+│       │   ├── llm.py           # Groq model setup
+│       │   ├── tools.py         # The 5 LangGraph tools
+│       │   └── graph.py         # The LangGraph state graph
+│       └── routers/
+│           ├── interactions.py  # CRUD endpoints for the structured form
+│           ├── chat.py          # Chat endpoint that drives the agent
+│           └── hcps.py          # HCP search endpoint
 ├── frontend/
+│   ├── package.json
+│   ├── .env.example
+│   └── src/
+│       ├── App.jsx
+│       ├── api/client.js        # Talks to the FastAPI backend
+│       ├── store/                # Redux Toolkit slice (form + chat state)
+│       └── components/
+│           ├── LogInteractionScreen.jsx
+│           ├── StructuredForm.jsx
+│           └── AIChatPanel.jsx
 └── README.md
 ```
 
@@ -25,7 +51,7 @@ Instead of filling every field manually, the representative can simply describe 
 
 The user can always review and edit the information before saving it.
 
-There are two ways to log an interaction.
+There are two ways to log an interaction, and **both write to the exact same interaction record** — a rep can start with one method and finish with the other.
 
 ### 1. Form Based Logging
 
@@ -54,26 +80,35 @@ The AI automatically extracts the important information and fills the form.
 
 ---
 
-# LangGraph Workflow
+# Role of the LangGraph Agent
 
-The AI assistant is built using LangGraph.
+The agent sits behind the chat panel and is responsible for turning a rep's free-text description into a structured, saved record.
 
-The workflow is simple.
+It is built as a **LangGraph state graph** rather than a single LLM call, because logging an interaction is rarely a one-step job. A single message might need the agent to look up an HCP's past visits, extract and save the new interaction, and then propose follow-up actions — three separate actions, each needing a different tool, before the agent is ready to reply.
+
+The graph has two nodes:
+
+- **Agent node** — reads the conversation and decides whether it has enough information to reply, or needs to call a tool.
+- **Tools node** — actually executes whichever tool the agent asked for (the tool is what touches the database, not the agent itself), and passes the result back.
+
+These two nodes loop together: agent → tool → agent → tool, for as many steps as needed, until the agent has nothing left to do and produces a final plain-language reply. This loop is what lets one chat message like *"log this meeting and tell me what to do next"* result in multiple tools firing in sequence, automatically.
+
+## Workflow summary
 
 1. User sends a message.
-2. LangGraph understands the request.
-3. Required tools are executed.
+2. The agent node decides what needs to happen.
+3. Required tools are executed (these are the only part that reads/writes the database).
 4. Database is updated.
-5. AI sends the response.
-6. The interaction form is updated automatically.
+5. The agent loops back and either calls another tool or sends a final response.
+6. The interaction form on the frontend updates automatically to match what was saved.
 
-![HCP](1A.png)
+![LangGraph agent flow](1A.png)
 
 ---
 
 # LangGraph Tools
 
-The project uses six tools.
+The project uses five tools.
 
 ## 1. Log Interaction
 
@@ -94,7 +129,7 @@ The AI extracts:
 - Samples Distributed
 - Follow-up Actions
 
-and saves everything into the database.
+and saves everything into the database. If the date isn't mentioned, it defaults to today automatically rather than being guessed.
 
 ---
 
@@ -108,7 +143,7 @@ Updates an existing interaction.
 Actually, change the sentiment to Negative instead.
 ```
 
-The AI finds the previous interaction and updates only the sentiment field.
+The AI finds the correct interaction — either from context earlier in the conversation, or by matching the HCP's most recently logged visit if no specific record was mentioned — and updates only the requested field.
 
 ---
 
@@ -136,7 +171,7 @@ Searches available brochures and samples.
 What materials do we have for Product X?
 ```
 
-The AI returns matching materials from the database.
+The AI returns matching materials directly from the approved catalog in the database, so only real, compliant items ever get recorded as shared.
 
 ---
 
@@ -158,7 +193,6 @@ Example suggestions:
 
 ---
 
-
 # AI Models Used
 
 This project uses two Groq models.
@@ -176,8 +210,7 @@ Used as the main model for:
 
 Used for:
 
-- Voice note summarization
-- Follow-up suggestions
+- Generating follow-up suggestions, since it benefits from a bit more reasoning than the fast tool-calling model
 
 ---
 
@@ -202,6 +235,7 @@ Used for:
 ### Database
 
 - MySQL
+
 ---
 
 # Running the Project
@@ -213,12 +247,29 @@ cd backend
 
 python -m venv .venv
 
+# Activate the virtual environment before installing anything
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+
 pip install -r requirements.txt
 
+# Copy the example env file and fill in your own values
+cp .env.example .env
+```
+
+Then edit `.env` and set:
+
+```
+GROQ_API_KEY=your_groq_api_key_here
+DATABASE_URL=mysql+pymysql://hcp_user:hcp_pass@localhost:3306/hcp_crm
+```
+
+Start the server:
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-Add your Groq API key inside the `.env` file.
+Database tables are created automatically on first run.
 
 ---
 
@@ -229,6 +280,18 @@ cd frontend
 
 npm install
 
+cp .env.example .env
+```
+
+The frontend `.env` should point at the backend:
+
+```
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+Start the dev server:
+
+```bash
 npm run dev
 ```
 
