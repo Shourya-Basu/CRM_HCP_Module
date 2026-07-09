@@ -1,0 +1,61 @@
+# --- Python / backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.Python
+build/
+dist/
+*.egg
+
+# --- Environment / secrets ---
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# --- Database ---
+*.db
+*.sqlite
+*.sqlite3
+backend/hcp_crm.db
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Logs ---
+*.log
+logs/
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Testing / coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+
+# --- Misc ---
+*.bak
+*.tmp
